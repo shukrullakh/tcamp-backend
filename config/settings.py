@@ -7,7 +7,9 @@ SECRET_KEY = 'django-insecure-6s%v1+2v)()jx$hc5yb0##3(-!+6a5sox(55m*mfsf1f#zxjht
 
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.153.146.126','172.20.110.126']
+ALLOWED_HOSTS = ['*','localhost','127.0.0.1','172.15.95.11',]
+USE_X_FORWARDED_HOST = True
+SITE_URL = "http://172.15.95.11:8000"
 
 AUTH_USER_MODEL = 'core.CustomUser'
 
@@ -55,6 +57,8 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:5001',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5001',
+    'http://172.15.95.11:5001',
+    
 ]
 CORS_ALLOW_CREDENTIALS = True
 

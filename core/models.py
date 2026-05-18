@@ -6,6 +6,10 @@ def avatar_upload_path(instance, filename):
     ext = filename.split('.')[-1]
     return f'avatars/{instance.id}.{ext}'
 
+def cover_upload_path(instance, filename):
+    ext = filename.split('.')[-1]
+    return f'covers/{instance.id}.{ext}'
+
 class University(models.Model):
     name = models.CharField(max_length=255, unique=True)
     def __str__(self):
@@ -14,6 +18,12 @@ class University(models.Model):
 class CustomUser(AbstractUser):
     university = models.ForeignKey(University, on_delete=models.SET_NULL, null=True, blank=True, related_name='students')
     avatar = models.ImageField(upload_to=avatar_upload_path, null=True, blank=True)
+    cover_image = models.ImageField(upload_to=cover_upload_path, null=True, blank=True)
+    bio = models.TextField(blank=True, default='')
+    location = models.CharField(max_length=120, blank=True, default='')
+    website = models.URLField(blank=True, default='')
+    is_verified = models.BooleanField(default=False)
+    is_private = models.BooleanField(default=False)
 
     def __str__(self):
         return self.username
@@ -75,6 +85,7 @@ class Notification(models.Model):
         ('reply', 'Reply'),
         ('follow', 'Follow'),
         ('new_question', 'New Question'),
+        ('mention', 'Mention'),
     )
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_notifications")
@@ -106,6 +117,11 @@ class Follow(models.Model):
 
     class Meta:
         unique_together = ('follower', 'following')
+        indexes = [
+            models.Index(fields=['follower', 'created_at']),
+            models.Index(fields=['following', 'created_at']),
+            models.Index(fields=['follower', 'following']),
+        ]
 
     def __str__(self):
         return f"{self.follower.username} -> {self.following.username}"
@@ -128,3 +144,107 @@ class UserSession(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.device_name} - {self.browser}"
+
+
+class Repost(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reposts')
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='reposts')
+    quote_text = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'question')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.username} reposted {self.question.id}"
+
+
+class SearchQuery(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='search_queries')
+    query = models.CharField(max_length=180)
+    normalized_query = models.CharField(max_length=180, db_index=True)
+    results_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['normalized_query', 'created_at']),
+        ]
+
+    def __str__(self):
+        return self.query
+
+
+class Mention(models.Model):
+    mentioned_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='mentions_made')
+    mentioned_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='mentions_received')
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='mentions')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('mentioned_user', 'question')
+        indexes = [
+            models.Index(fields=['mentioned_user', 'created_at']),
+            models.Index(fields=['question', 'mentioned_user']),
+        ]
+
+    def __str__(self):
+        return f"@{self.mentioned_user.username} in {self.question_id}"
+
+
+class ContactMessage(models.Model):
+    name = models.CharField(max_length=255)
+    email = models.EmailField()
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name} - {self.email}"
+
+
+class SavedQuestion(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='saved_questions')
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='saved_by')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'question')
+        ordering = ['-created_at']
+
+
+class BlockedUser(models.Model):
+    blocker = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='blocked_users')
+    blocked = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='blocked_by')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('blocker', 'blocked')
+
+class NotInterestedQuestion(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='not_interested')
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='not_interested_by')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'question')
+
+class ReportedQuestion(models.Model):
+    REPORT_REASONS = (
+        ('spam', 'Spam'),
+        ('inappropriate', "Noto'g'ri kontent"),
+        ('misleading', "Yolg'on ma'lumot"),
+        ('other', 'Boshqa'),
+    )
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reported_questions')
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='reports')
+    reason = models.CharField(max_length=20, choices=REPORT_REASONS, default='other')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'question')
